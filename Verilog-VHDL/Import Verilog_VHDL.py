@@ -5,9 +5,12 @@ Loïc PAGNON
 A faire :
 """
 
-from Verilog_VHDL import conversion, testbench_generation
+from Verilog_VHDL import conversion
+from TB import testbench_generation
 
 conversion()
 
-
-testbench_generation()
+while input("Voulez-vous générer un test bench avec ceci ? Y/N  ") != "Y" or "N":
+    if input("Voulez-vous générer un test bench avec ceci ? Y/N  ") == "Y":
+        testbench_generation()
+        
