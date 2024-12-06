@@ -11,3 +11,5 @@ def testbench_generation():
     - Entrée : fichier avec le code VHDL de la description d'un composant
     - Sortie : fichier avec le code VHDL du test bench de ce composant
     """
+
+    

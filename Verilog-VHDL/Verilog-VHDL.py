@@ -9,106 +9,98 @@ ll
 import re
 from tkinter import Tk, filedialog
 
-# Initialiser la fenêtre Tkinter
-root = Tk()
-root.withdraw()  # Masquer la fenêtre principale
+def conversion():
+    """
+    Fonction pour convertir Verilog en VHDL ligne par ligne.
+    - Entrée : fichier texte avec le code Verilog
+    - Sortie : fichier texte avec le code VHDL ; coût = nombre de lignes contenant des opérateurs logiques
+    """
+    # Ouvrir une fenêtre pour sélectionner un fichier Verilog
+    Tk().withdraw()  # Masquer la fenêtre principale Tkinter
+    verilog_file = filedialog.askopenfilename(
+        title="Sélectionner un fichier Verilog",
+        filetypes=[("Fichiers Verilog", "*.txt"), ("Tous les fichiers", "*.*")]
+    )
 
-# Définir les types de fichiers acceptés
-filetypes = [("Fichiers Verilog", "*.v *.sv"), ("Tous les fichiers", "*.*")]
+    if not verilog_file:
+        print("Aucun fichier sélectionné.")
+        return
 
-# Demander à l'utilisateur de sélectionner un fichier Verilog
-selected_file = filedialog.askopenfilename(title="Sélectionnez un fichier Verilog", filetypes=filetypes)
-if not selected_file:
-    print("Aucun fichier sélectionné. Opération annulée.")
-    exit()
+    # Lire le contenu du fichier Verilog ligne par ligne
+    with open(verilog_file, 'r') as file:
+        verilog_lines = file.readlines()
 
-# Lire le contenu du fichier sélectionné ligne par ligne
-try:
-    with open(selected_file, 'r') as file:
-        lines = file.readlines()
-    print(f"Fichier sélectionné : {selected_file}")
-except Exception as e:
-    print(f"Erreur lors de la lecture du fichier : {e}")
-    exit()
+    # Nettoyer les lignes pour supprimer les espaces inutiles
+    verilog_lines = [line.strip() for line in verilog_lines if line.strip()]
 
-# Liste pour stocker les lignes modifiées
-modified_lines = []
+    # Variables pour stocker les informations extraites
+    module_name = None
+    ports = []
+    inputs = []
+    outputs = []
+    wires = []
+    assigns = []
+    logical_lines_count = 0
 
-# Parcourir chaque ligne du fichier
-for line in lines:
-    line = line.strip()  # Supprimer les espaces inutiles autour de la ligne
+    # Parcourir chaque ligne du fichier Verilog
+    for line in verilog_lines:
+        # Détecter le nom du module
+        if line.startswith("module"):
+            module_name = re.search(r'module\s+(\w+)', line).group(1)
+            ports = re.search(r'\((.*?)\);', line).group(1).replace('\n', '').split(',')
 
-    # Supprimer les lignes contenant 'wire'
-    if re.match(r"\s*wire", line):
-        continue  # Passer à la ligne suivante si c'est une déclaration wire
+        # Identifier les ports d'entrée et de sortie
+        elif line.startswith("input"):
+            inputs += [p.strip() for p in re.findall(r'\w+', line.replace("input", "").strip())]
+        elif line.startswith("output"):
+            outputs += [p.strip() for p in re.findall(r'\w+', line.replace("output", "").strip())]
+        
+        # Identifier les fils internes
+        elif line.startswith("wire"):
+            wires += [p.strip() for p in re.findall(r'\w+', line.replace("wire", "").strip())]
 
-    # Conversion des ports Verilog groupés (suppression des répétitions du type)
-    line = re.sub(r"(input|output|inout)\s+([^;]+);", 
-                  lambda m: f"{', '.join(m.group(2).split())} : {m.group(1)} std_logic;", 
-                  line)
+        # Identifier les assignations et compter les opérateurs logiques
+        elif line.startswith("assign"):
+            assigns.append(line)
+            if any(op in line for op in ['^', '&', '|']):
+                logical_lines_count += 1
 
-    # Conversion du module Verilog en entité VHDL
-    line = re.sub(r"module\s+(\w+)\s*\((.*)\);", r"entity \1 is\nport (\2);", line)
-    line = re.sub(r"endmodule", r"end entity;", line)
+    # Préparer les ports VHDL
+    ports = [p.strip() for p in ports]
+    vhdl_ports = []
+    for port in ports:
+        if port in inputs:
+            vhdl_ports.append(f"{port} : in std_logic")
+        elif port in outputs:
+            vhdl_ports.append(f"{port} : out std_logic")
 
-    # Conversion des déclarations de variables
-    line = re.sub(r"input\s+(\[.*\])?\s*(\w+);", r"\2 : in std_logic;", line)
-    line = re.sub(r"output\s+(\[.*\])?\s*(\w+);", r"\2 : out std_logic;", line)
+    # Préparer les signaux internes (wires)
+    vhdl_signals = [f"signal {wire} : std_logic;" for wire in wires]
 
-    # Conversion des assignations
-    line = re.sub(r"assign\s+(\w+)\s*=\s*(.*);", r"\1 <= \2;", line)
+    # Préparer les assignations VHDL
+    vhdl_assignments = []
+    for assign in assigns:
+        left, right = re.search(r'assign\s+(\w+)\s*=\s*(.*);', assign).groups()
+        right = right.replace('^', 'xor').replace('&', 'and').replace('|', 'or')  # Conversion des opérateurs
+        vhdl_assignments.append(f"{left.strip()} <= {right.strip()};")
 
-    # Conversion des structures conditionnelles
-    line = re.sub(r"if\s*\((.*)\)\s*begin", r"if (\1) then", line)
-    line = re.sub(r"end\s*else\s*if", r"elsif", line)
-    line = re.sub(r"end\s*else", r"else", line)
-    line = re.sub(r"end\s*begin", r"end if;", line)
+    # Générer le code VHDL
+    vhdl_code = "library IEEE;\n" + "use IEEE.STD_LOGIC_1164.ALL;\n" + "use IEEE.NUMERIC_STD.ALL;\n\n"
+    vhdl_code += f"entity {module_name} is\n"
+    vhdl_code += "port (\n    " + ";\n    ".join(vhdl_ports) + "\n);\n"
+    vhdl_code += f"end {module_name};\n\n"
+    vhdl_code += f"architecture {module_name}_struct of {module_name} is\n"
+    vhdl_code += "    " + "\n    ".join(vhdl_signals) + "\n"
+    vhdl_code += "begin\n"
+    vhdl_code += "    " + "\n    ".join(vhdl_assignments) + "\n"
+    vhdl_code += f"end {module_name}_struct;"
 
-    # Conversion des blocs always
-    line = re.sub(r"always\s*@(.*)", r"process (\1) is", line)
-    line = re.sub(r"end\s*always", r"end process;", line)
+    # Sauvegarder le fichier VHDL
+    vhdl_file = verilog_file.rsplit('.', 1)[0] + ".vhdl"
+    with open(vhdl_file, 'w') as file:
+        file.write(vhdl_code)
 
-    # Conversion des boucles for
-    line = re.sub(r"for\s+(\w+)\s*=\s*(\d+)\s*:\s*(\d+)\s*begin", r"for \1 in \2 to \3 loop", line)
-    line = re.sub(r"end\s*for", r"end loop;", line)
-
-    # Ajouter un saut de ligne après chaque instruction convertie
-    if line:  # Si la ligne n'est pas vide, ajouter un saut de ligne
-        modified_lines.append(line + "\n")
-
-# Ajouter des retours à la ligne pour les déclarations de variables
-final_lines = []
-for line in modified_lines:
-    # Éviter de répéter std_logic dans les ports
-    line = re.sub(r"(\w+,\s*\w+):\s*std_logic\s*:.*std_logic;", r"\1 : std_logic;", line)
-    
-    # Ajouter un saut de ligne après chaque déclaration de variable
-    if re.match(r".*:\s*std_logic;", line):
-        final_lines.append(line + "\n")  # Ajouter des sauts de ligne après chaque déclaration
-    else:
-        final_lines.append(line)  # Conserver les autres lignes telles quelles
-
-# Demander à l'utilisateur de sélectionner un dossier de destination
-destination_folder = filedialog.askdirectory(title="Sélectionnez un dossier de destination")
-if not destination_folder:
-    print("Aucun dossier sélectionné. Sauvegarde annulée.")
-    exit()
-
-# Demander le nom du fichier à sauvegarder
-file_name = filedialog.asksaveasfilename(
-    title="Nom du fichier à sauvegarder",
-    initialdir=destination_folder,
-    defaultextension=".vhdl",
-    filetypes=[("Fichiers VHDL", "*.vhdl"), ("Tous les fichiers", "*.*")]
-)
-if not file_name:
-    print("Nom de fichier non spécifié. Sauvegarde annulée.")
-    exit()
-
-# Sauvegarder le contenu converti dans le fichier spécifié
-try:
-    with open(file_name, 'w') as file:
-        file.writelines(final_lines)
-    print(f"Fichier VHDL sauvegardé sous : {file_name}")
-except Exception as e:
-    print(f"Erreur lors de la sauvegarde du fichier : {e}")
+    # Afficher le résultat
+    print(f"Fichier VHDL généré : {vhdl_file}")
+    print(f"Nombre de lignes contenant des opérateurs logiques : {logical_lines_count}.")
+    return logical_lines_count
