@@ -5,7 +5,9 @@ Loïc PAGNON
 A faire :
 """
 
-from Verilog_VHDL import conversion
+from Verilog_VHDL import conversion, testbench_generation
 
 conversion()
 
+
+testbench_generation()

@@ -7,6 +7,7 @@ ll
 """
 
 import re
+import os
 from tkinter import Tk, filedialog
 
 def conversion():
@@ -96,11 +97,18 @@ def conversion():
     vhdl_code += f"end {module_name}_struct;"
 
     # Sauvegarder le fichier VHDL
-    vhdl_file = verilog_file.rsplit('.', 1)[0] + ".vhdl"
+    output_directory = r"C:\Users\Utilisateur\Documents\GitHub\Verilog-VHDL\Output Files"
+        # Créer le répertoire s'il n'existe pas
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory)
+        # Générer le nom complet du fichier de sortie dans le répertoire défini
+    output_filename = os.path.basename(verilog_file).rsplit('.', 1)[0] + ".vhdl"
+    vhdl_file = os.path.join(output_directory, output_filename)
+        # Sauvegarder le fichier VHDL
     with open(vhdl_file, 'w') as file:
         file.write(vhdl_code)
 
     # Afficher le résultat
     print(f"Fichier VHDL généré : {vhdl_file}")
-    print(f"Nombre de lignes contenant des opérateurs logiques : {logical_lines_count}.")
+    print(f"Nombre d'opérateurs logiques : {logical_lines_count}.")
     return logical_lines_count
